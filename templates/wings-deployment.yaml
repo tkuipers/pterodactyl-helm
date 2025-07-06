@@ -185,6 +185,8 @@ spec:
           {{- end }}
         - name: wings-config
           emptyDir: {}
+        - name: dind-storage
+          emptyDir: {}
       containers:
         - name: {{ .Chart.Name }}-wings
           image: "{{ .Values.wings.image.repository }}:{{ .Values.wings.image.tag | default .Chart.AppVersion }}"
@@ -198,6 +200,8 @@ spec:
               value: {{ .Values.wings.env.TZ }}
             - name: WINGS_DEBUG
               value: "{{ .Values.wings.env.WINGS_DEBUG }}"
+            - name: DOCKER_HOST
+              value: "tcp://localhost:2375"
           ports:
             - name: http
               containerPort: 8080
@@ -213,30 +217,40 @@ spec:
             - name: wings-config
               mountPath: /etc/pterodactyl
           livenessProbe:
-            httpGet:
-              path: /api/system
+            tcpSocket:
               port: 8080
             initialDelaySeconds: 120
             periodSeconds: 30
           readinessProbe:
-            httpGet:
-              path: /api/system
+            tcpSocket:
               port: 8080
             initialDelaySeconds: 60
             periodSeconds: 15
           resources:
             {{- toYaml .Values.wings.resources | nindent 12 }}
-        # Debug sidecar container - uncomment to enable
-        - name: debug-sidecar
-          image: busybox
-          command: ["/bin/sh", "-c", "while true; do echo 'Debug sidecar running...'; sleep 30; done"]
+        - name: docker-daemon
+          image: docker:dind
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsGroup: 0
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""  # Disable TLS for internal communication
+            - name: DOCKER_DRIVER
+              value: overlay2
           volumeMounts:
-            - name: wings-config
-              mountPath: /etc/pterodactyl
+            - name: docker-storage
+              mountPath: /var/lib/docker
+            - name: dind-storage
+              mountPath: /tmp
           resources:
             limits:
-              cpu: 50m
-              memory: 64Mi
+              cpu: 4000m      # 4 CPU cores
+              memory: 16Gi    # 16GB RAM
+            requests:
+              cpu: 500m       # 0.5 CPU cores minimum
+              memory: 1Gi     # 1GB RAM minimum
       {{- with .Values.wings.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
