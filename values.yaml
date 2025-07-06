@@ -111,6 +111,8 @@ wings:
       maxPorts: 100
       portRange: "25565-25585"
   
+
+  
   # Wings service to expose API
   service:
     type: ClusterIP

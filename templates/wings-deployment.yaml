@@ -1,4 +1,117 @@
 {{- if .Values.wings.enabled -}}
+---
+# Docker Daemon Service - allows Wings to connect to Docker daemon
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-docker
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: docker-daemon
+spec:
+  selector:
+    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: docker-daemon
+  ports:
+    - name: docker-api
+      protocol: TCP
+      port: 2375
+      targetPort: docker-api
+  type: ClusterIP
+---
+# Docker Daemon Deployment - paired 1:1 with Wings
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-docker
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: docker-daemon
+spec:
+  replicas: {{ .Values.wings.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: docker-daemon
+  template:
+    metadata:
+      labels:
+        {{- include "pterodactyl.wings.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: docker-daemon
+    spec:
+      containers:
+        - name: docker-daemon
+          image: docker:dind
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsGroup: 0
+          command: ["dockerd"]
+          args:
+            - --host=tcp://0.0.0.0:2375
+            - --host=unix:///var/run/docker.sock
+            - --tls=false
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""  # Disable TLS for internal communication
+            - name: DOCKER_DRIVER
+              value: overlay2
+          ports:
+            - name: docker-api
+              containerPort: 2375
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: docker-storage
+              mountPath: /var/lib/docker
+            - name: dind-storage
+              mountPath: /tmp
+          resources:
+            limits:
+              cpu: 4000m      # 4 CPU cores
+              memory: 16Gi    # 16GB RAM
+            requests:
+              cpu: 500m       # 0.5 CPU cores minimum
+              memory: 1Gi     # 1GB RAM minimum
+          livenessProbe:
+            tcpSocket:
+              port: 2375
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 2375
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: docker-storage
+          {{- if .Values.wings.persistence.docker.enabled }}
+          {{- if .Values.wings.persistence.docker.hostPath }}
+          hostPath:
+            path: {{ .Values.wings.persistence.docker.hostPath }}
+            type: DirectoryOrCreate
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "pterodactyl.wings.name" . }}-docker
+          {{- end }}
+          {{- else }}
+          emptyDir:
+            sizeLimit: 50Gi
+          {{- end }}
+        - name: dind-storage
+          emptyDir: {}
+      {{- with .Values.wings.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+# Wings Deployment - paired 1:1 with Docker Daemon
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -156,6 +269,18 @@ spec:
             - name: wings-config
               mountPath: /etc/pterodactyl
       {{- end }}
+        # Wait for Docker daemon API to be ready
+        - name: wait-for-docker
+          image: curlimages/curl:8.5.0
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "Waiting for Docker daemon API to be ready..."
+              until curl -f -s http://{{ include "pterodactyl.wings.name" . }}-docker.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local:2375/version >/dev/null 2>&1; do
+                echo "Docker daemon API not ready, waiting 5 seconds..."
+                sleep 5
+              done
+              echo "Docker daemon API is ready!"
       volumes:
         - name: docker-storage
           {{- if .Values.wings.persistence.docker.enabled }}
@@ -201,7 +326,7 @@ spec:
             - name: WINGS_DEBUG
               value: "{{ .Values.wings.env.WINGS_DEBUG }}"
             - name: DOCKER_HOST
-              value: "tcp://localhost:2375"
+              value: "tcp://{{ include "pterodactyl.wings.name" . }}-docker.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local:2375"
           ports:
             - name: http
               containerPort: 8080
@@ -210,8 +335,6 @@ spec:
               containerPort: 2022
               protocol: TCP
           volumeMounts:
-            - name: docker-storage
-              mountPath: /var/lib/docker
             - name: wings-data
               mountPath: /var/lib/pterodactyl
             - name: wings-config
@@ -219,38 +342,16 @@ spec:
           livenessProbe:
             tcpSocket:
               port: 8080
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 30
           readinessProbe:
             tcpSocket:
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 120
             periodSeconds: 15
           resources:
             {{- toYaml .Values.wings.resources | nindent 12 }}
-        - name: docker-daemon
-          image: docker:dind
-          securityContext:
-            privileged: true
-            runAsUser: 0
-            runAsGroup: 0
-          env:
-            - name: DOCKER_TLS_CERTDIR
-              value: ""  # Disable TLS for internal communication
-            - name: DOCKER_DRIVER
-              value: overlay2
-          volumeMounts:
-            - name: docker-storage
-              mountPath: /var/lib/docker
-            - name: dind-storage
-              mountPath: /tmp
-          resources:
-            limits:
-              cpu: 4000m      # 4 CPU cores
-              memory: 16Gi    # 16GB RAM
-            requests:
-              cpu: 500m       # 0.5 CPU cores minimum
-              memory: 1Gi     # 1GB RAM minimum
+
       {{- with .Values.wings.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
