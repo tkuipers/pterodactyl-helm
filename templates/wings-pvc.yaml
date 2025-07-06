@@ -1,0 +1,42 @@
+{{- if and .Values.wings.enabled .Values.wings.persistence.docker.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-docker
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings
+spec:
+  accessModes:
+    {{- range .Values.wings.persistence.docker.accessModes }}
+    - {{ . }}
+    {{- end }}
+  {{- if .Values.wings.persistence.docker.storageClass }}
+  storageClassName: {{ .Values.wings.persistence.docker.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.wings.persistence.docker.size }}
+{{- end }}
+
+{{- if and .Values.wings.enabled .Values.wings.persistence.data.enabled -}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-data
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings
+spec:
+  accessModes:
+    {{- range .Values.wings.persistence.data.accessModes }}
+    - {{ . }}
+    {{- end }}
+  {{- if .Values.wings.persistence.data.storageClass }}
+  storageClassName: {{ .Values.wings.persistence.data.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.wings.persistence.data.size }}
+{{- end }} 

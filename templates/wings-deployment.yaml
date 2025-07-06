@@ -1,0 +1,83 @@
+{{- if .Values.wings.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings
+spec:
+  # We usually want only one Wings per node
+  replicas: {{ .Values.wings.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pterodactyl.wings.selectorLabels" . | nindent 8 }}
+    spec:
+      # Wings needs to run with elevated permissions for Docker-in-Docker
+      securityContext:
+        {{- toYaml .Values.wings.securityContext | nindent 8 }}
+      volumes:
+        - name: docker-storage
+          {{- if .Values.wings.persistence.docker.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pterodactyl.wings.name" . }}-docker
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: wings-data
+          {{- if .Values.wings.persistence.data.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pterodactyl.wings.name" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: wings-config
+          emptyDir: {}
+      containers:
+        - name: {{ .Chart.Name }}-wings
+          image: "{{ .Values.wings.image.repository }}:{{ .Values.wings.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.wings.image.pullPolicy }}
+          securityContext:
+            privileged: true
+          env:
+            - name: TZ
+              value: {{ .Values.wings.env.TZ }}
+            - name: WINGS_DEBUG
+              value: "{{ .Values.wings.env.WINGS_DEBUG }}"
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: sftp
+              containerPort: 2022
+              protocol: TCP
+          volumeMounts:
+            - name: docker-storage
+              mountPath: /var/lib/docker
+            - name: wings-data
+              mountPath: /var/lib/pterodactyl
+            - name: wings-config
+              mountPath: /etc/pterodactyl
+          livenessProbe:
+            httpGet:
+              path: /api/system
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/system
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.wings.resources | nindent 12 }}
+      {{- with .Values.wings.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }} 

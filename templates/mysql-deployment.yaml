@@ -1,0 +1,57 @@
+{{- if .Values.mysql.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pterodactyl.mysql.name" . }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "pterodactyl.mysql.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "pterodactyl.mysql.selectorLabels" . | nindent 8 }}
+    spec:
+      volumes:
+        - name: mysql-data
+          {{- if .Values.mysql.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pterodactyl.mysql.name" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}-mysql
+          image: "{{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}"
+          imagePullPolicy: {{ .Values.mysql.image.pullPolicy }}
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.mysql.name" . }}
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: {{ .Values.panel.database.database }}
+            - name: MYSQL_USER
+              value: {{ .Values.panel.database.username }}
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.panel.name" . }}-db
+                  key: db-password
+          ports:
+            - name: mysql
+              containerPort: 3306
+              protocol: TCP
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+          resources:
+            {{- toYaml .Values.mysql.resources | nindent 12 }}
+{{- end }} 

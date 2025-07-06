@@ -1,0 +1,23 @@
+{{- if .Values.wings.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-gameservers
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings-gameservers
+spec:
+  type: {{ .Values.gameServers.service.type }}
+  # We need to expose a range of ports for game servers
+  ports:
+    {{- $start := .Values.gameServers.service.portRange.start }}
+    {{- $end := .Values.gameServers.service.portRange.end }}
+    {{- range untilStep (int $start) (add (int $end) 1) 1 }}
+    - port: {{ . }}
+      targetPort: {{ . }}
+      protocol: TCP
+      name: gs-{{ . }}
+    {{- end }}
+  selector:
+    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
+{{- end }} 

@@ -1,0 +1,63 @@
+{{- if .Values.queueWorker.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pterodactyl.worker.name" . }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.queueWorker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pterodactyl.worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pterodactyl.worker.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}-worker
+          image: "{{ .Values.panel.image.repository }}:{{ .Values.panel.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.panel.image.pullPolicy }}
+          command: ["php", "artisan", "queue:work", "--queue=high,standard,low", "--sleep=3", "--tries=3"]
+          env:
+            - name: APP_ENV
+              value: {{ .Values.panel.env.APP_ENV }}
+            - name: APP_DEBUG
+              value: "{{ .Values.panel.env.APP_DEBUG }}"
+            - name: APP_TIMEZONE
+              value: {{ .Values.panel.env.APP_TIMEZONE }}
+            - name: CACHE_DRIVER
+              value: {{ .Values.panel.env.CACHE_DRIVER }}
+            - name: SESSION_DRIVER
+              value: {{ .Values.panel.env.SESSION_DRIVER }}
+            - name: QUEUE_CONNECTION
+              value: {{ .Values.panel.env.QUEUE_CONNECTION }}
+            - name: DB_HOST
+              value: {{ .Values.panel.database.host }}
+            - name: DB_PORT
+              value: "{{ .Values.panel.database.port }}"
+            - name: DB_DATABASE
+              value: {{ .Values.panel.database.database }}
+            - name: DB_USERNAME
+              value: {{ .Values.panel.database.username }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.panel.name" . }}-db
+                  key: db-password
+            - name: REDIS_HOST
+              value: {{ .Values.panel.redis.host }}
+            - name: REDIS_PORT
+              value: "{{ .Values.panel.redis.port }}"
+            {{- if .Values.panel.redis.password }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.panel.name" . }}-redis
+                  key: redis-password
+            {{- end }}
+          resources:
+            {{- toYaml .Values.queueWorker.resources | nindent 12 }}
+{{- end }} 

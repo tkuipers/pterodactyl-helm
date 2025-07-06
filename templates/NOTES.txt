@@ -1,22 +1,47 @@
-1. Get the application URL by running these commands:
-{{- if .Values.ingress.enabled }}
-{{- range $host := .Values.ingress.hosts }}
-  {{- range .paths }}
-  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
-  {{- end }}
+Thank you for installing {{ .Chart.Name }}.
+
+Your Pterodactyl Panel installation is now being deployed!
+
+{{- if .Values.panel.ingress.enabled }}
+The Panel should be available at:
+{{- range .Values.panel.ingress.hosts }}
+  https://{{ .host }}
 {{- end }}
-{{- else if contains "NodePort" .Values.service.type }}
-  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "pterodactyl-helm.fullname" . }})
-  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
-  echo http://$NODE_IP:$NODE_PORT
-{{- else if contains "LoadBalancer" .Values.service.type }}
-     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
-           You can watch its status by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "pterodactyl-helm.fullname" . }}'
-  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "pterodactyl-helm.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
-  echo http://$SERVICE_IP:{{ .Values.service.port }}
-{{- else if contains "ClusterIP" .Values.service.type }}
-  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "pterodactyl-helm.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
-  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
-  echo "Visit http://127.0.0.1:8080 to use your application"
-  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+{{- else }}
+To access the Panel, you need to set up an ingress or port-forward:
+
+  kubectl port-forward svc/{{ include "pterodactyl.panel.name" . }} {{ .Values.panel.service.port }}:80
+
+Then access: http://localhost:{{ .Values.panel.service.port }}
 {{- end }}
+
+IMPORTANT POST-INSTALLATION STEPS:
+
+1. You need to create the first admin user. Use:
+
+   kubectl exec -it deployment/{{ include "pterodactyl.panel.name" . }} -- php artisan p:user:make
+
+2. Set up Wings:
+   
+   After logging in to the Panel, go to "Locations" in the admin area and add a new location.
+   Then, add a new node for the Wings instance with this configuration:
+   
+   - FQDN: {{ include "pterodactyl.wings.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
+   - Scheme: http
+   - Behind Proxy: No
+   - Port: {{ .Values.wings.service.port }}
+   - Communication: Internal (use the Kubernetes service DNS)
+
+3. Run:
+   
+   kubectl exec -it deployment/{{ include "pterodactyl.wings.name" . }} -- wings configure
+
+   And follow the prompts to generate a Wings configuration, using the token from the Panel.
+
+4. Game server ports are exposed via service type: {{ .Values.gameServers.service.type }}
+   Using ports {{ .Values.gameServers.service.portRange.start }} to {{ .Values.gameServers.service.portRange.end }}
+
+For more information, visit:
+https://pterodactyl.io/panel/1.0/getting_started.html
+https://pterodactyl.io/wings/1.0/installing.html

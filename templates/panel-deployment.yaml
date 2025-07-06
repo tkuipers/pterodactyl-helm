@@ -1,0 +1,95 @@
+{{- if .Values.panel.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pterodactyl.panel.name" . }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: panel
+spec:
+  replicas: {{ .Values.panel.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pterodactyl.panel.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "pterodactyl.panel.selectorLabels" . | nindent 8 }}
+    spec:
+      volumes:
+        - name: panel-storage
+          {{- if .Values.panel.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "pterodactyl.panel.name" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}-panel
+          image: "{{ .Values.panel.image.repository }}:{{ .Values.panel.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.panel.image.pullPolicy }}
+          env:
+            - name: APP_URL
+              value: "https://{{ .Values.global.panelUrl }}"
+            - name: APP_ENV
+              value: {{ .Values.panel.env.APP_ENV }}
+            - name: APP_DEBUG
+              value: "{{ .Values.panel.env.APP_DEBUG }}"
+            - name: APP_TIMEZONE
+              value: {{ .Values.panel.env.APP_TIMEZONE }}
+            - name: CACHE_DRIVER
+              value: {{ .Values.panel.env.CACHE_DRIVER }}
+            - name: SESSION_DRIVER
+              value: {{ .Values.panel.env.SESSION_DRIVER }}
+            - name: QUEUE_CONNECTION
+              value: {{ .Values.panel.env.QUEUE_CONNECTION }}
+            - name: DB_HOST
+              value: {{ .Values.panel.database.host }}
+            - name: DB_PORT
+              value: "{{ .Values.panel.database.port }}"
+            - name: DB_DATABASE
+              value: {{ .Values.panel.database.database }}
+            - name: DB_USERNAME
+              value: {{ .Values.panel.database.username }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.panel.name" . }}-db
+                  key: db-password
+            - name: REDIS_HOST
+              value: {{ .Values.panel.redis.host }}
+            - name: REDIS_PORT
+              value: "{{ .Values.panel.redis.port }}"
+            {{- if .Values.panel.redis.password }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.panel.name" . }}-redis
+                  key: redis-password
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: panel-storage
+              mountPath: /var/www/pterodactyl/storage
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.panel.resources | nindent 12 }}
+{{- end }} 

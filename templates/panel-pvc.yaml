@@ -1,0 +1,20 @@
+{{- if and .Values.panel.enabled .Values.panel.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pterodactyl.panel.name" . }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: panel
+spec:
+  accessModes:
+    {{- range .Values.panel.persistence.accessModes }}
+    - {{ . }}
+    {{- end }}
+  {{- if .Values.panel.persistence.storageClass }}
+  storageClassName: {{ .Values.panel.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.panel.persistence.size }}
+{{- end }} 
