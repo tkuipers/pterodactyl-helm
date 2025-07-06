@@ -1,0 +1,92 @@
+{{- if .Values.wings.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-docker
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: docker-daemon
+spec:
+  serviceName: {{ include "pterodactyl.wings.name" . }}-docker-headless
+  replicas: {{ .Values.wings.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: docker-daemon
+  template:
+    metadata:
+      labels:
+        {{- include "pterodactyl.wings.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: docker-daemon
+    spec:
+      containers:
+        - name: docker-daemon
+          image: docker:dind
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsGroup: 0
+          command: ["dockerd"]
+          args:
+            - --host=tcp://0.0.0.0:2375
+            - --host=unix:///var/run/docker.sock
+            - --tls=false
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""  # Disable TLS for internal communication
+            - name: DOCKER_DRIVER
+              value: overlay2
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: docker-api
+              containerPort: 2375
+              protocol: TCP
+          volumeMounts:
+            - name: docker-storage
+              mountPath: /var/lib/docker
+            - name: dind-storage
+              mountPath: /tmp
+          resources:
+            limits:
+              cpu: 4000m      # 4 CPU cores
+              memory: 16Gi    # 16GB RAM
+            requests:
+              cpu: 500m       # 0.5 CPU cores minimum
+              memory: 1Gi     # 1GB RAM minimum
+          livenessProbe:
+            tcpSocket:
+              port: 2375
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 2375
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        # Shared Docker storage - all Docker daemons share the same hostPath
+        - name: docker-storage
+          {{- if .Values.wings.persistence.docker.enabled }}
+          {{- if .Values.wings.persistence.docker.hostPath }}
+          hostPath:
+            path: {{ .Values.wings.persistence.docker.hostPath }}
+            type: DirectoryOrCreate
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "pterodactyl.wings.name" . }}-docker
+          {{- end }}
+          {{- else }}
+          emptyDir:
+            sizeLimit: 50Gi
+          {{- end }}
+        - name: dind-storage
+          emptyDir: {}
+      {{- with .Values.wings.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }} 

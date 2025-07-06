@@ -113,6 +113,8 @@ wings:
   
 
   
+
+  
   # Wings service to expose API
   service:
     type: ClusterIP

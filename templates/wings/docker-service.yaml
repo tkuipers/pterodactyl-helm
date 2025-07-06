@@ -1,0 +1,20 @@
+{{- if .Values.wings.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-docker-headless
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: docker-daemon
+spec:
+  clusterIP: None  # Headless service for direct pod access
+  selector:
+    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: docker-daemon
+  ports:
+    - name: docker-api
+      protocol: TCP
+      port: 2375
+      targetPort: docker-api
+{{- end }} 

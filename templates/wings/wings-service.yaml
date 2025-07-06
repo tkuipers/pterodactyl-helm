@@ -1,0 +1,45 @@
+{{- if .Values.wings.enabled -}}
+# Headless service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-headless
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings
+spec:
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: wings
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: http
+    - name: sftp
+      protocol: TCP
+      port: 2022
+      targetPort: sftp
+---
+# Regular service for external access
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings
+spec:
+  type: {{ .Values.wings.service.type }}
+  selector:
+    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: wings
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.wings.service.port }}
+      targetPort: http
+{{- end }} 

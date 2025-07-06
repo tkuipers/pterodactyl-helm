@@ -1,119 +1,6 @@
 {{- if .Values.wings.enabled -}}
----
-# Docker Daemon Service - allows Wings to connect to Docker daemon
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "pterodactyl.wings.name" . }}-docker
-  namespace: {{ .Values.namespace | default "pterodactyl" }}
-  labels:
-    {{- include "pterodactyl.labels" . | nindent 4 }}
-    app.kubernetes.io/component: docker-daemon
-spec:
-  selector:
-    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: docker-daemon
-  ports:
-    - name: docker-api
-      protocol: TCP
-      port: 2375
-      targetPort: docker-api
-  type: ClusterIP
----
-# Docker Daemon Deployment - paired 1:1 with Wings
 apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "pterodactyl.wings.name" . }}-docker
-  namespace: {{ .Values.namespace | default "pterodactyl" }}
-  labels:
-    {{- include "pterodactyl.labels" . | nindent 4 }}
-    app.kubernetes.io/component: docker-daemon
-spec:
-  replicas: {{ .Values.wings.replicaCount }}
-  selector:
-    matchLabels:
-      {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: docker-daemon
-  template:
-    metadata:
-      labels:
-        {{- include "pterodactyl.wings.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: docker-daemon
-    spec:
-      containers:
-        - name: docker-daemon
-          image: docker:dind
-          securityContext:
-            privileged: true
-            runAsUser: 0
-            runAsGroup: 0
-          command: ["dockerd"]
-          args:
-            - --host=tcp://0.0.0.0:2375
-            - --host=unix:///var/run/docker.sock
-            - --tls=false
-          env:
-            - name: DOCKER_TLS_CERTDIR
-              value: ""  # Disable TLS for internal communication
-            - name: DOCKER_DRIVER
-              value: overlay2
-          ports:
-            - name: docker-api
-              containerPort: 2375
-              protocol: TCP
-          env:
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-          volumeMounts:
-            - name: docker-storage
-              mountPath: /var/lib/docker
-            - name: dind-storage
-              mountPath: /tmp
-          resources:
-            limits:
-              cpu: 4000m      # 4 CPU cores
-              memory: 16Gi    # 16GB RAM
-            requests:
-              cpu: 500m       # 0.5 CPU cores minimum
-              memory: 1Gi     # 1GB RAM minimum
-          livenessProbe:
-            tcpSocket:
-              port: 2375
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          readinessProbe:
-            tcpSocket:
-              port: 2375
-            initialDelaySeconds: 10
-            periodSeconds: 5
-      volumes:
-        - name: docker-storage
-          {{- if .Values.wings.persistence.docker.enabled }}
-          {{- if .Values.wings.persistence.docker.hostPath }}
-          hostPath:
-            path: {{ .Values.wings.persistence.docker.hostPath }}
-            type: DirectoryOrCreate
-          {{- else }}
-          persistentVolumeClaim:
-            claimName: {{ include "pterodactyl.wings.name" . }}-docker
-          {{- end }}
-          {{- else }}
-          emptyDir:
-            sizeLimit: 50Gi
-          {{- end }}
-        - name: dind-storage
-          emptyDir: {}
-      {{- with .Values.wings.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
----
-# Wings Deployment - paired 1:1 with Docker Daemon
-apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "pterodactyl.wings.name" . }}
   namespace: {{ .Values.namespace | default "pterodactyl" }}
@@ -121,18 +8,18 @@ metadata:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: wings
 spec:
-  # We usually want only one Wings per node
+  serviceName: {{ include "pterodactyl.wings.name" . }}-headless
   replicas: {{ .Values.wings.replicaCount }}
   selector:
     matchLabels:
       {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: wings
   template:
     metadata:
       labels:
         {{- include "pterodactyl.wings.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: wings
     spec:
-      # Wings needs to run with elevated permissions for Docker-in-Docker
-      # Pod-level security context - no privileged field here
       securityContext:
         fsGroup: 0
       {{- if .Values.wings.autoConfig.enabled }}
@@ -204,7 +91,11 @@ spec:
               done
               echo "Panel is ready!"
               
-              # Generate cool 3-word random names
+              # Extract instance index from pod name (e.g. pterodactyl-wings-0 -> 0)
+              INSTANCE_INDEX=$(echo "$POD_NAME" | sed 's/.*-//')
+              echo "Wings instance index: $INSTANCE_INDEX"
+              
+              # Generate cool 3-word random names with instance suffix
               ADJECTIVES="happy brave calm swift bold clever quiet wild bright gentle fierce proud noble wise strong agile nimble steady mighty powerful graceful elegant sleek smooth polished refined crisp sharp focused alert keen vigilant watchful silent stealthy swift rapid quick lightning blazing burning glowing radiant luminous brilliant dazzling sparkling shimmering gleaming majestic royal regal imperial cosmic stellar lunar solar arctic alpine mountain ocean desert storm thunder lightning frost crystal diamond emerald sapphire"
               NOUNS="dolphin tiger whale shark eagle hawk wolf bear lion fox deer rabbit owl snake dragon falcon raven crow phoenix griffin unicorn pegasus leopard panther jaguar cheetah lynx cougar puma bobcat serval caracal ocelot margay kodiak grizzly polar panda koala wombat kangaroo wallaby platypus echidna badger wolverine otter seal walrus narwhal orca beluga manatee dugong turtle tortoise gecko iguana chameleon salamander newt frog toad spider scorpion mantis beetle butterfly dragonfly firefly hummingbird kingfisher woodpecker cardinal bluejay mockingbird nightingale"
               COLORS="red blue green yellow purple orange pink silver gold bronze copper iron steel jade ruby emerald sapphire topaz amethyst garnet onyx obsidian quartz crystal diamond pearl platinum titanium cobalt chrome nickel zinc aluminum magnesium lithium neon cyan magenta turquoise teal mint lime coral salmon rose crimson scarlet burgundy maroon navy royal azure cerulean indigo violet lavender plum orchid fuchsia amber honey caramel chocolate coffee espresso mocha vanilla cream ivory pearl snow frost ice glacier arctic"
@@ -214,8 +105,8 @@ spec:
               NOUN=$(echo $NOUNS | tr ' ' '\n' | shuf -n 1)
               COLOR=$(echo $COLORS | tr ' ' '\n' | shuf -n 1)
               
-              # Generate location and node names
-              LOCATION_SHORT="${ADJ}-${NOUN}-${COLOR}"
+              # Generate location and node names with instance index
+              LOCATION_SHORT="${ADJ}-${NOUN}-${COLOR}-${INSTANCE_INDEX}"
               LOCATION_LONG="{{ .Values.wings.autoConfig.location.long }} (${LOCATION_SHORT}) on node ${NODE_NAME_K8S}"
               
               NODE_NAME_RANDOM="${LOCATION_SHORT}"
@@ -268,33 +159,24 @@ spec:
           volumeMounts:
             - name: wings-config
               mountPath: /etc/pterodactyl
-      {{- end }}
-        # Wait for Docker daemon API to be ready
+        # Wait for the specific paired Docker daemon to be ready
         - name: wait-for-docker
           image: curlimages/curl:8.5.0
           command: ['sh', '-c']
           args:
             - |
-              echo "Waiting for Docker daemon API to be ready..."
-              until curl -f -s http://{{ include "pterodactyl.wings.name" . }}-docker.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local:2375/version >/dev/null 2>&1; do
-                echo "Docker daemon API not ready, waiting 5 seconds..."
+              # Get ordinal from hostname (StatefulSet hostname = pod name)
+              ORDINAL=$(hostname | sed 's/.*-//')
+              DOCKER_HOST="{{ include "pterodactyl.wings.name" . }}-docker-${ORDINAL}.{{ include "pterodactyl.wings.name" . }}-docker-headless.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local"
+              
+              echo "Waiting for paired Docker daemon: $DOCKER_HOST"
+              until curl -f -s http://${DOCKER_HOST}:2375/version >/dev/null 2>&1; do
+                echo "Docker daemon not ready, waiting 5 seconds..."
                 sleep 5
               done
-              echo "Docker daemon API is ready!"
+              echo "Docker daemon ready for pod $ORDINAL!"
+      {{- end }}
       volumes:
-        - name: docker-storage
-          {{- if .Values.wings.persistence.docker.enabled }}
-          {{- if .Values.wings.persistence.docker.hostPath }}
-          hostPath:
-            path: {{ .Values.wings.persistence.docker.hostPath }}
-            type: DirectoryOrCreate
-          {{- else }}
-          persistentVolumeClaim:
-            claimName: {{ include "pterodactyl.wings.name" . }}-docker
-          {{- end }}
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
         - name: wings-data
           {{- if .Values.wings.persistence.data.enabled }}
           {{- if .Values.wings.persistence.data.hostPath }}
@@ -310,9 +192,34 @@ spec:
           {{- end }}
         - name: wings-config
           emptyDir: {}
-        - name: dind-storage
-          emptyDir: {}
       containers:
+        # Docker proxy sidecar - forwards localhost:2375 to the correct Docker daemon
+        - name: docker-proxy
+          image: alpine/socat:1.7.4.4
+          command: ['sh', '-c']
+          args:
+            - |
+              # Get ordinal from hostname and resolve target Docker daemon
+              ORDINAL=$(hostname | sed 's/.*-//')
+              TARGET="{{ include "pterodactyl.wings.name" . }}-docker-${ORDINAL}.{{ include "pterodactyl.wings.name" . }}-docker-headless.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local:2375"
+              
+              echo "Docker proxy starting..."
+              echo "Pod ordinal: $ORDINAL"
+              echo "Forwarding localhost:2375 -> $TARGET"
+              
+              # Wait for target Docker daemon to be ready
+              until nc -z $(echo $TARGET | cut -d: -f1) $(echo $TARGET | cut -d: -f2) 2>/dev/null; do
+                echo "Waiting for Docker daemon: $TARGET"
+                sleep 5
+              done
+              echo "Docker daemon ready, starting proxy..."
+              
+              # Start the proxy
+              socat TCP-LISTEN:2375,fork,reuseaddr TCP:$TARGET
+          ports:
+            - name: docker-proxy
+              containerPort: 2375
+              protocol: TCP
         - name: {{ .Chart.Name }}-wings
           image: "{{ .Values.wings.image.repository }}:{{ .Values.wings.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.wings.image.pullPolicy }}
@@ -326,7 +233,8 @@ spec:
             - name: WINGS_DEBUG
               value: "{{ .Values.wings.env.WINGS_DEBUG }}"
             - name: DOCKER_HOST
-              value: "tcp://{{ include "pterodactyl.wings.name" . }}-docker.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local:2375"
+              value: "tcp://localhost:2375"
+
           ports:
             - name: http
               containerPort: 8080
@@ -351,7 +259,6 @@ spec:
             periodSeconds: 15
           resources:
             {{- toYaml .Values.wings.resources | nindent 12 }}
-
       {{- with .Values.wings.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
