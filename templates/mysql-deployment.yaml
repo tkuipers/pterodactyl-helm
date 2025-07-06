@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "pterodactyl.mysql.name" . }}
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: mysql
@@ -18,11 +19,21 @@ spec:
       labels:
         {{- include "pterodactyl.mysql.selectorLabels" . | nindent 8 }}
     spec:
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
       volumes:
         - name: mysql-data
           {{- if .Values.mysql.persistence.enabled }}
+          {{- if .Values.mysql.persistence.hostPath }}
+          hostPath:
+            path: {{ .Values.mysql.persistence.hostPath }}
+            type: DirectoryOrCreate
+          {{- else }}
           persistentVolumeClaim:
             claimName: {{ include "pterodactyl.mysql.name" . }}
+          {{- end }}
           {{- else }}
           emptyDir: {}
           {{- end }}
@@ -30,6 +41,9 @@ spec:
         - name: {{ .Chart.Name }}-mysql
           image: "{{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}"
           imagePullPolicy: {{ .Values.mysql.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:

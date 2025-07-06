@@ -1,8 +1,9 @@
-{{- if and .Values.panel.enabled .Values.panel.persistence.enabled -}}
+{{- if and .Values.panel.enabled .Values.panel.persistence.enabled (not .Values.panel.persistence.hostPath) -}}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "pterodactyl.panel.name" . }}
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: panel

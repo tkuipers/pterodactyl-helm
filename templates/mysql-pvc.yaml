@@ -1,8 +1,9 @@
-{{- if and .Values.mysql.enabled .Values.mysql.persistence.enabled -}}
+{{- if and .Values.mysql.enabled .Values.mysql.persistence.enabled (not .Values.mysql.persistence.hostPath) -}}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "pterodactyl.mysql.name" . }}
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: mysql

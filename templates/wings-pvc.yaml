@@ -1,8 +1,9 @@
-{{- if and .Values.wings.enabled .Values.wings.persistence.docker.enabled -}}
+{{- if and .Values.wings.enabled .Values.wings.persistence.docker.enabled (not .Values.wings.persistence.docker.hostPath) -}}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "pterodactyl.wings.name" . }}-docker
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: wings
@@ -19,12 +20,13 @@ spec:
       storage: {{ .Values.wings.persistence.docker.size }}
 {{- end }}
 
-{{- if and .Values.wings.enabled .Values.wings.persistence.data.enabled -}}
+{{- if and .Values.wings.enabled .Values.wings.persistence.data.enabled (not .Values.wings.persistence.data.hostPath) -}}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "pterodactyl.wings.name" . }}-data
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: wings

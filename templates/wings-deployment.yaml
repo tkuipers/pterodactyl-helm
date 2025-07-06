@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "pterodactyl.wings.name" . }}
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: wings
@@ -18,20 +19,33 @@ spec:
         {{- include "pterodactyl.wings.selectorLabels" . | nindent 8 }}
     spec:
       # Wings needs to run with elevated permissions for Docker-in-Docker
+      # Pod-level security context - no privileged field here
       securityContext:
-        {{- toYaml .Values.wings.securityContext | nindent 8 }}
+        fsGroup: 0
       volumes:
         - name: docker-storage
           {{- if .Values.wings.persistence.docker.enabled }}
+          {{- if .Values.wings.persistence.docker.hostPath }}
+          hostPath:
+            path: {{ .Values.wings.persistence.docker.hostPath }}
+            type: DirectoryOrCreate
+          {{- else }}
           persistentVolumeClaim:
             claimName: {{ include "pterodactyl.wings.name" . }}-docker
+          {{- end }}
           {{- else }}
           emptyDir: {}
           {{- end }}
         - name: wings-data
           {{- if .Values.wings.persistence.data.enabled }}
+          {{- if .Values.wings.persistence.data.hostPath }}
+          hostPath:
+            path: {{ .Values.wings.persistence.data.hostPath }}
+            type: DirectoryOrCreate
+          {{- else }}
           persistentVolumeClaim:
             claimName: {{ include "pterodactyl.wings.name" . }}-data
+          {{- end }}
           {{- else }}
           emptyDir: {}
           {{- end }}
@@ -43,6 +57,8 @@ spec:
           imagePullPolicy: {{ .Values.wings.image.pullPolicy }}
           securityContext:
             privileged: true
+            runAsUser: 0
+            runAsGroup: 0
           env:
             - name: TZ
               value: {{ .Values.wings.env.TZ }}

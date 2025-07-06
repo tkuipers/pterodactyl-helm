@@ -123,3 +123,5 @@ Temporary Items
 # End of https://www.gitignore.io/api/helm,macos,jetbrains+all
 
 temp/
+
+values-production.yaml

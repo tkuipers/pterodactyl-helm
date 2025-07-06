@@ -1,10 +1,13 @@
 # Default values for pterodactyl-helm chart
 # This is a YAML-formatted file.
 
+# Namespace configuration
+namespace: pterodactyl
+
 # Global settings
 global:
   # URL where the panel will be accessible
-  panelUrl: "games.tkuipers.ca"
+  panelUrl: "panel.example.com"
   
 # Panel component
 panel:
@@ -15,6 +18,10 @@ panel:
     pullPolicy: IfNotPresent
   
   replicaCount: 1
+  
+  # Laravel application key (base64 encoded 32-character string)
+  # Generate with: php artisan key:generate --show
+  appKey: "base64:SomeRandomBase64EncodedKeyForPterodactylPanelApplication32Chars="
   
   # Panel environment variables
   env:
@@ -27,7 +34,7 @@ panel:
   
   # Panel database configuration
   database:
-    host: "mysql"
+    host: "pterodactyl-mysql"
     port: 3306
     database: "panel"
     username: "pterodactyl"
@@ -36,7 +43,7 @@ panel:
   
   # Panel Redis configuration
   redis:
-    host: "redis"
+    host: "pterodactyl-redis"
     port: 6379
     password: ""
   
@@ -46,15 +53,7 @@ panel:
     className: "nginx"
     annotations:
       kubernetes.io/tls-acme: "true"
-    hosts:
-      - host: "panel.example.com"
-        paths:
-          - path: /
-            pathType: Prefix
-    tls:
-      - secretName: panel-tls
-        hosts:
-          - "panel.example.com"
+    tls: true  # Enable TLS, uses global.panelUrl automatically
   
   # Panel service
   service:
@@ -73,6 +72,7 @@ panel:
   persistence:
     enabled: true
     storageClass: ""
+    hostPath: ""  # If specified, uses hostPath instead of PVC
     size: 5Gi
     accessModes:
       - ReadWriteOnce
@@ -89,8 +89,7 @@ wings:
   replicaCount: 1
   
   # Wings needs to be privileged for Docker-in-Docker
-  securityContext:
-    privileged: true
+  # securityContext settings are handled in the template
   
   # Wings environment configuration
   env:
@@ -107,12 +106,14 @@ wings:
     docker:
       enabled: true
       storageClass: ""
+      hostPath: ""  # If specified, uses hostPath instead of PVC
       size: 20Gi
       accessModes:
         - ReadWriteOnce
     data:
       enabled: true
       storageClass: ""
+      hostPath: ""  # If specified, uses hostPath instead of PVC
       size: 50Gi
       accessModes:
         - ReadWriteOnce
@@ -141,6 +142,7 @@ mysql:
   persistence:
     enabled: true
     storageClass: ""
+    hostPath: ""  # If specified, uses hostPath instead of PVC
     size: 10Gi
     accessModes:
       - ReadWriteOnce
@@ -164,6 +166,7 @@ redis:
   persistence:
     enabled: true
     storageClass: ""
+    hostPath: ""  # If specified, uses hostPath instead of PVC
     size: 1Gi
     accessModes:
       - ReadWriteOnce

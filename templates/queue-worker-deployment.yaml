@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "pterodactyl.worker.name" . }}
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
@@ -16,12 +17,24 @@ spec:
       labels:
         {{- include "pterodactyl.worker.selectorLabels" . | nindent 8 }}
     spec:
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
       containers:
         - name: {{ .Chart.Name }}-worker
           image: "{{ .Values.panel.image.repository }}:{{ .Values.panel.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.panel.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
           command: ["php", "artisan", "queue:work", "--queue=high,standard,low", "--sleep=3", "--tries=3"]
           env:
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.panel.name" . }}-app
+                  key: app-key
             - name: APP_ENV
               value: {{ .Values.panel.env.APP_ENV }}
             - name: APP_DEBUG

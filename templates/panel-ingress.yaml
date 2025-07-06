@@ -10,6 +10,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $fullName }}
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: panel
@@ -23,29 +24,19 @@ spec:
   {{- end }}
   {{- if .Values.panel.ingress.tls }}
   tls:
-    {{- range .Values.panel.ingress.tls }}
     - hosts:
-        {{- range .hosts }}
-        - {{ . | quote }}
-        {{- end }}
-      secretName: {{ .secretName }}
-    {{- end }}
+        - {{ .Values.global.panelUrl | quote }}
+      secretName: {{ .Values.global.panelUrl }}-tls
   {{- end }}
   rules:
-    {{- range .Values.panel.ingress.hosts }}
-    - host: {{ .host | quote }}
+    - host: {{ .Values.global.panelUrl | quote }}
       http:
         paths:
-          {{- range .paths }}
-          - path: {{ .path }}
-            {{- if .pathType }}
-            pathType: {{ .pathType }}
-            {{- end }}
+          - path: /
+            pathType: Prefix
             backend:
               service:
                 name: {{ $fullName }}
                 port:
-                  name: http
-          {{- end }}
-    {{- end }}
+                  number: {{ $svcPort }}
 {{- end }} 

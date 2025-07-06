@@ -3,11 +3,7 @@ Thank you for installing {{ .Chart.Name }}.
 Your Pterodactyl Panel installation is now being deployed!
 
 {{- if .Values.panel.ingress.enabled }}
-The Panel should be available at:
-{{- range .Values.panel.ingress.hosts }}
-  https://{{ .host }}
-{{- end }}
-
+Your panel is available at: https://{{ .Values.global.panelUrl }}
 {{- else }}
 To access the Panel, you need to set up an ingress or port-forward:
 
