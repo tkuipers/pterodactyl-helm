@@ -22,6 +22,140 @@ spec:
       # Pod-level security context - no privileged field here
       securityContext:
         fsGroup: 0
+      {{- if .Values.wings.autoConfig.enabled }}
+      initContainers:
+        - name: wings-auto-config
+          image: "{{ .Values.panel.image.repository }}:{{ .Values.panel.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.panel.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          env:
+            - name: APP_URL
+              value: "https://{{ .Values.global.panelUrl }}"
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.panel.name" . }}-app
+                  key: app-key
+            - name: APP_ENV
+              value: {{ .Values.panel.env.APP_ENV }}
+            - name: APP_DEBUG
+              value: "{{ .Values.panel.env.APP_DEBUG }}"
+            - name: APP_TIMEZONE
+              value: {{ .Values.panel.env.APP_TIMEZONE }}
+            - name: CACHE_DRIVER
+              value: {{ .Values.panel.env.CACHE_DRIVER }}
+            - name: SESSION_DRIVER
+              value: {{ .Values.panel.env.SESSION_DRIVER }}
+            - name: QUEUE_CONNECTION
+              value: {{ .Values.panel.env.QUEUE_CONNECTION }}
+            - name: DB_HOST
+              value: {{ .Values.panel.database.host }}
+            - name: DB_PORT
+              value: "{{ .Values.panel.database.port }}"
+            - name: DB_DATABASE
+              value: {{ .Values.panel.database.database }}
+            - name: DB_USERNAME
+              value: {{ .Values.panel.database.username }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pterodactyl.panel.name" . }}-db
+                  key: db-password
+            - name: REDIS_HOST
+              value: {{ .Values.panel.redis.host }}
+            - name: REDIS_PORT
+              value: "{{ .Values.panel.redis.port }}"
+            - name: NODE_NAME
+              value: "{{ include "pterodactyl.wings.name" . }}"
+            - name: WINGS_FQDN
+              value: "{{ include "pterodactyl.wings.name" . }}.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME_K8S
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for Panel to be ready..."
+              while ! curl -s http://{{ include "pterodactyl.panel.name" . }}.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local/api/system >/dev/null 2>&1; do
+                echo "Panel not ready, waiting 10 seconds..."
+                sleep 10
+              done
+              echo "Panel is ready!"
+              
+              # Generate cool 3-word random names
+              ADJECTIVES="happy brave calm swift bold clever quiet wild bright gentle fierce proud noble wise strong agile nimble steady mighty powerful graceful elegant sleek smooth polished refined crisp sharp focused alert keen vigilant watchful silent stealthy swift rapid quick lightning blazing burning glowing radiant luminous brilliant dazzling sparkling shimmering gleaming majestic royal regal imperial cosmic stellar lunar solar arctic alpine mountain ocean desert storm thunder lightning frost crystal diamond emerald sapphire"
+              NOUNS="dolphin tiger whale shark eagle hawk wolf bear lion fox deer rabbit owl snake dragon falcon raven crow phoenix griffin unicorn pegasus leopard panther jaguar cheetah lynx cougar puma bobcat serval caracal ocelot margay kodiak grizzly polar panda koala wombat kangaroo wallaby platypus echidna badger wolverine otter seal walrus narwhal orca beluga manatee dugong turtle tortoise gecko iguana chameleon salamander newt frog toad spider scorpion mantis beetle butterfly dragonfly firefly hummingbird kingfisher woodpecker cardinal bluejay mockingbird nightingale"
+              COLORS="red blue green yellow purple orange pink silver gold bronze copper iron steel jade ruby emerald sapphire topaz amethyst garnet onyx obsidian quartz crystal diamond pearl platinum titanium cobalt chrome nickel zinc aluminum magnesium lithium neon cyan magenta turquoise teal mint lime coral salmon rose crimson scarlet burgundy maroon navy royal azure cerulean indigo violet lavender plum orchid fuchsia amber honey caramel chocolate coffee espresso mocha vanilla cream ivory pearl snow frost ice glacier arctic"
+              
+              # Pick random words
+              ADJ=$(echo $ADJECTIVES | tr ' ' '\n' | shuf -n 1)
+              NOUN=$(echo $NOUNS | tr ' ' '\n' | shuf -n 1)
+              COLOR=$(echo $COLORS | tr ' ' '\n' | shuf -n 1)
+              
+              # Generate location and node names
+              LOCATION_SHORT="${ADJ}-${NOUN}-${COLOR}"
+              LOCATION_LONG="{{ .Values.wings.autoConfig.location.long }} (${LOCATION_SHORT}) on node ${NODE_NAME_K8S}"
+              
+              NODE_NAME_RANDOM="${LOCATION_SHORT}"
+              
+              echo "Creating unique location: ${LOCATION_SHORT}"
+              echo "Location description: ${LOCATION_LONG}"
+              echo "Creating unique node: ${NODE_NAME_RANDOM}"
+              
+              # Create fresh location and capture the ID
+              echo "Creating fresh location: ${LOCATION_SHORT}"
+              LOCATION_OUTPUT=$(php artisan p:location:make --short="${LOCATION_SHORT}" --long="${LOCATION_LONG}" 2>&1)
+              echo "Location creation output: ${LOCATION_OUTPUT}"
+              
+              # Extract location ID from creation output
+              LOCATION_ID=$(echo "${LOCATION_OUTPUT}" | grep -o 'ID of [0-9]*' | cut -d' ' -f3)
+              echo "Created location with ID: ${LOCATION_ID}"
+              
+              # Create node and capture the ID
+              echo "Creating node: ${NODE_NAME_RANDOM}"
+              NODE_OUTPUT=$(php artisan p:node:make \
+                --name="${NODE_NAME_RANDOM}" \
+                --description="Auto-generated Wings node for ${LOCATION_SHORT} on ${NODE_NAME_K8S}" \
+                --locationId="${LOCATION_ID}" \
+                --fqdn="${WINGS_FQDN}" \
+                --public=1 \
+                --scheme=http \
+                --proxy=0 \
+                --maintenance=0 \
+                --daemonListeningPort=8080 \
+                --daemonSFTPPort=2022 \
+                --maxMemory={{ .Values.wings.autoConfig.node.memory }} \
+                --overallocateMemory={{ .Values.wings.autoConfig.node.memoryOverallocate }} \
+                --maxDisk={{ .Values.wings.autoConfig.node.disk }} \
+                --overallocateDisk={{ .Values.wings.autoConfig.node.diskOverallocate }} \
+                --uploadSize={{ .Values.wings.autoConfig.node.uploadSize }} \
+                --daemonBase=/var/lib/pterodactyl 2>&1)
+              echo "Node creation output: ${NODE_OUTPUT}"
+              
+              # Extract node ID from creation output
+              NODE_ID=$(echo "${NODE_OUTPUT}" | grep -o 'id of [0-9]*' | cut -d' ' -f3)
+              echo "Created node with ID: ${NODE_ID}"
+              
+              # Generate Wings configuration
+              echo "Generating Wings configuration..."
+              php artisan p:node:configuration "${NODE_ID}" > /etc/pterodactyl/config.yml
+              
+              echo "Wings auto-configuration completed!"
+              echo "Location: ${LOCATION_SHORT} - ${LOCATION_LONG}"
+              echo "Node: ${NODE_NAME_RANDOM} on ${NODE_NAME_K8S}"
+          volumeMounts:
+            - name: wings-config
+              mountPath: /etc/pterodactyl
+      {{- end }}
       volumes:
         - name: docker-storage
           {{- if .Values.wings.persistence.docker.enabled }}
@@ -92,6 +226,17 @@ spec:
             periodSeconds: 15
           resources:
             {{- toYaml .Values.wings.resources | nindent 12 }}
+        # Debug sidecar container - uncomment to enable
+        - name: debug-sidecar
+          image: busybox
+          command: ["/bin/sh", "-c", "while true; do echo 'Debug sidecar running...'; sleep 30; done"]
+          volumeMounts:
+            - name: wings-config
+              mountPath: /etc/pterodactyl
+          resources:
+            limits:
+              cpu: 50m
+              memory: 64Mi
       {{- with .Values.wings.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

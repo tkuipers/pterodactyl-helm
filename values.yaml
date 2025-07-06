@@ -96,6 +96,21 @@ wings:
     TZ: UTC
     WINGS_DEBUG: false
   
+  # Auto-configuration settings
+  autoConfig:
+    enabled: true
+    location:
+      short: "k8s"
+      long: "Kubernetes Cluster"
+    node:
+      memory: 8192
+      memoryOverallocate: 0
+      disk: 20480
+      diskOverallocate: 0
+      uploadSize: 100
+      maxPorts: 100
+      portRange: "25565-25585"
+  
   # Wings service to expose API
   service:
     type: ClusterIP
