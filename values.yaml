@@ -4,7 +4,7 @@
 # Global settings
 global:
   # URL where the panel will be accessible
-  panelUrl: "panel.example.com"
+  panelUrl: "games.tkuipers.ca"
   
 # Panel component
 panel:
@@ -20,7 +20,7 @@ panel:
   env:
     APP_ENV: production
     APP_DEBUG: false
-    APP_TIMEZONE: UTC
+    APP_TIMEZONE: America/Edmonton
     CACHE_DRIVER: redis
     SESSION_DRIVER: redis
     QUEUE_CONNECTION: redis
