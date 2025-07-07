@@ -16,6 +16,10 @@ spec:
       targetPort: {{ . }}
       protocol: TCP
       name: gs-{{ . }}
+    - port: {{ . }}
+      targetPort: {{ . }}
+      protocol: UDP
+      name: gs-udp-{{ . }}
     {{- end }}
   selector:
     {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
