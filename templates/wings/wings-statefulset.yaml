@@ -133,7 +133,7 @@ spec:
                 --fqdn="${WINGS_FQDN}" \
                 --public=1 \
                 --scheme=http \
-                --proxy=0 \
+                --proxy=1 \
                 --maintenance=0 \
                 --daemonListeningPort=8080 \
                 --daemonSFTPPort=2022 \

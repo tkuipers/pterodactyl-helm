@@ -38,7 +38,7 @@ data:
         server {
             listen {{ . }};
             proxy_pass {{ include "pterodactyl.wings.name" $ }}-docker-{{ $serverIndex }}.{{ include "pterodactyl.wings.name" $ }}-docker-headless.{{ $.Values.namespace | default "pterodactyl" }}.svc.cluster.local:{{ . }};
-            proxy_timeout 1s;
+            proxy_timeout 60s;
             proxy_responses 1;
             error_log /var/log/nginx/gameserver-{{ . }}.log;
         }
@@ -47,8 +47,7 @@ data:
         server {
             listen {{ . }} udp;
             proxy_pass {{ include "pterodactyl.wings.name" $ }}-docker-{{ $serverIndex }}.{{ include "pterodactyl.wings.name" $ }}-docker-headless.{{ $.Values.namespace | default "pterodactyl" }}.svc.cluster.local:{{ . }};
-            proxy_timeout 1s;
-            proxy_responses 1;
+            proxy_timeout 60s;
             error_log /var/log/nginx/gameserver-udp-{{ . }}.log;
         }
         {{- end }}
