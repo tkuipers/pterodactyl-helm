@@ -1,0 +1,193 @@
+{{- if .Values.wings.enabled -}}
+{{- if .Values.wings.proxy.enabled -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-proxy-config
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings-proxy
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log notice;
+    pid /var/run/nginx.pid;
+    
+    events {
+        worker_connections 1024;
+    }
+    
+    stream {
+        # DNS resolver for dynamic proxy_pass resolution
+        resolver kube-dns.kube-system.svc.cluster.local valid=5s;
+        
+        log_format basic '$remote_addr [$time_local] '
+                        '$protocol $status $bytes_sent $bytes_received '
+                        '$session_time "$upstream_addr"';
+        
+        access_log /var/log/nginx/stream.log basic;
+        
+        # Port-based routing for game servers with direct proxy_pass
+        {{- range $serverIndex, $server := .Values.wings.servers }}
+        {{- range seq ($server.portRange.start | int) ($server.portRange.end | int) | split " " }}
+        
+        # TCP routing for port {{ . }} - route to Docker daemon where game servers run
+        server {
+            listen {{ . }};
+            proxy_pass {{ include "pterodactyl.wings.name" $ }}-docker-{{ $serverIndex }}.{{ include "pterodactyl.wings.name" $ }}-docker-headless.{{ $.Values.namespace | default "pterodactyl" }}.svc.cluster.local:{{ . }};
+            proxy_timeout 1s;
+            proxy_responses 1;
+            error_log /var/log/nginx/gameserver-{{ . }}.log;
+        }
+        
+        # UDP routing for port {{ . }} - route to Docker daemon where game servers run
+        server {
+            listen {{ . }} udp;
+            proxy_pass {{ include "pterodactyl.wings.name" $ }}-docker-{{ $serverIndex }}.{{ include "pterodactyl.wings.name" $ }}-docker-headless.{{ $.Values.namespace | default "pterodactyl" }}.svc.cluster.local:{{ . }};
+            proxy_timeout 1s;
+            proxy_responses 1;
+            error_log /var/log/nginx/gameserver-udp-{{ . }}.log;
+        }
+        {{- end }}
+        {{- end }}
+    }
+    
+    # Standard HTTP config for health checks
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                       '$status $body_bytes_sent "$http_referer" '
+                       '"$http_user_agent" "$http_x_forwarded_for"';
+        
+        access_log /var/log/nginx/access.log main;
+        sendfile on;
+        keepalive_timeout 65;
+        
+        server {
+            listen 8080;
+            server_name _;
+            
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+            
+            location / {
+                return 404;
+            }
+        }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-proxy
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "pterodactyl.labels" . | nindent 6 }}
+      app.kubernetes.io/component: wings-proxy
+  template:
+    metadata:
+      labels:
+        {{- include "pterodactyl.labels" . | nindent 8 }}
+        app.kubernetes.io/component: wings-proxy
+    spec:
+      containers:
+        - name: nginx-proxy
+          image: nginx:1.25-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            # Health check port
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            # All game server ports from Wings servers
+            {{- range .Values.wings.servers }}
+            {{- range seq (.portRange.start | int) (.portRange.end | int) | split " " }}
+            - name: game-tcp-{{ . }}
+              containerPort: {{ . }}
+              protocol: TCP
+            - name: game-udp-{{ . }}
+              containerPort: {{ . }}
+              protocol: UDP
+            {{- end }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.wings.proxy.resources | nindent 12 }}
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: {{ include "pterodactyl.wings.name" . }}-proxy-config
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-proxy
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings-proxy
+spec:
+  type: ClusterIP
+  ports:
+    # Health check port
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    # All game server ports from Wings servers
+    {{- range .Values.wings.servers }}
+    {{- range seq (.portRange.start | int) (.portRange.end | int) | split " " }}
+    - name: game-tcp-{{ . }}
+      port: {{ . }}
+      targetPort: {{ . }}
+      protocol: TCP
+    - name: game-udp-{{ . }}
+      port: {{ . }}
+      targetPort: {{ . }}
+      protocol: UDP
+    {{- end }}
+    {{- end }}
+  selector:
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings-proxy
+{{- end }}
+{{- end }} 

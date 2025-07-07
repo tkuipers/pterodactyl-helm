@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: wings
 spec:
   serviceName: {{ include "pterodactyl.wings.name" . }}-headless
-  replicas: {{ .Values.wings.replicaCount }}
+  replicas: {{ len .Values.wings.servers }}
   selector:
     matchLabels:
       {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}

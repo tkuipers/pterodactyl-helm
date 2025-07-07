@@ -18,25 +18,48 @@ IMPORTANT POST-INSTALLATION STEPS:
 
    kubectl exec -it deployment/{{ include "pterodactyl.panel.name" . }} -- php artisan p:user:make
 
+{{- if .Values.wings.autoConfig.enabled }}
+2. Wings Configuration:
+   
+   Wings auto-configuration is ENABLED. The Wings instances will automatically:
+   - Create unique locations and nodes in the Panel
+   - Generate their own configuration files
+   - Register themselves with the Panel
+   
+   No manual Wings configuration is required!
+{{- else }}
 2. Set up Wings:
    
    After logging in to the Panel, go to "Locations" in the admin area and add a new location.
-   Then, add a new node for the Wings instance with this configuration:
+   Then, add a new node for each Wings instance with this configuration:
    
-   - FQDN: {{ include "pterodactyl.wings.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
+   {{- range $index, $server := .Values.wings.servers }}
+   Wings {{ $index }} ({{ $server.name }}):
+   - FQDN: {{ include "pterodactyl.wings.name" $ }}-{{ $index }}.{{ $.Release.Namespace }}.svc.cluster.local
    - Scheme: http
-   - Behind Proxy: No
-   - Port: {{ .Values.wings.service.port }}
-   - Communication: Internal (use the Kubernetes service DNS)
+   - Behind Proxy: {{ if $.Values.wings.proxy.enabled }}Yes{{else}}No{{end}}
+   - Port: {{ $.Values.wings.api.port }}
+   {{- end }}
 
-3. Run:
+3. Run for each Wings instance:
    
-   kubectl exec -it deployment/{{ include "pterodactyl.wings.name" . }} -- wings configure
+   kubectl exec -it {{ include "pterodactyl.wings.name" . }}-0 -- wings configure
 
    And follow the prompts to generate a Wings configuration, using the token from the Panel.
+{{- end }}
 
 4. Game server ports are exposed via service type: {{ .Values.gameServers.service.type }}
-   Using ports {{ .Values.gameServers.service.portRange.start }} to {{ .Values.gameServers.service.portRange.end }}
+   {{- if .Values.wings.proxy.enabled }}
+   Using Nginx proxy for intelligent port-based routing to Wings servers:
+   {{- range .Values.wings.servers }}
+   - {{ .name }}: ports {{ .portRange.start }} to {{ .portRange.end }}
+   {{- end }}
+   {{- else }}
+   Using direct port mapping from Wings servers:
+   {{- range .Values.wings.servers }}
+   - {{ .name }}: ports {{ .portRange.start }} to {{ .portRange.end }}
+   {{- end }}
+   {{- end }}
 
 For more information, visit:
 https://pterodactyl.io/panel/1.0/getting_started.html

@@ -7,59 +7,85 @@ namespace: pterodactyl
 # Global settings
 global:
   # URL where the panel will be accessible
-  panelUrl: "panel.example.com"
-  
-# Panel component
+  panelUrl: "pterodactyl.example.com"
+
+# Panel configuration
 panel:
   enabled: true
-  image:
-    repository: ghcr.io/pterodactyl/panel
-    tag: latest
-    pullPolicy: IfNotPresent
   
-  replicaCount: 1
-  
-  # Laravel application key (base64 encoded 32-character string)
+  # Laravel application key - CHANGE THIS IN PRODUCTION!
   # Generate with: php artisan key:generate --show
+  # This is a proper 32-byte key base64-encoded for AES-256-CBC
   appKey: "base64:SomeRandomBase64EncodedKeyForPterodactylPanelApplication32Chars="
-  
-  # Panel environment variables
+
+  # Panel image configuration
+  image:
+    repository: "ghcr.io/pterodactyl/panel"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+
+  # Panel replica configuration
+  replicaCount: 1
+
+  # Panel service configuration
+  service:
+    type: ClusterIP
+    port: 80
+
+  # Environment-specific settings
   env:
-    APP_ENV: production
+    APP_TIMEZONE: "UTC"
+    APP_ENV: "production"
     APP_DEBUG: false
-    APP_TIMEZONE: America/Edmonton
-    CACHE_DRIVER: redis
-    SESSION_DRIVER: redis
-    QUEUE_CONNECTION: redis
-  
-  # Panel database configuration
+    CACHE_DRIVER: "redis"
+    SESSION_DRIVER: "redis"
+    QUEUE_CONNECTION: "redis"
+
+  # Database configuration
   database:
     host: "pterodactyl-mysql"
     port: 3306
-    database: "panel"
+    database: "pterodactyl"
     username: "pterodactyl"
-    # Will be stored as a secret
+    # Use strong passwords in production
     password: "changeme"
-  
-  # Panel Redis configuration
+
+  # Redis configuration
   redis:
     host: "pterodactyl-redis"
     port: 6379
-    password: ""
-  
-  # Panel ingress
+
+  # Ingress configuration
   ingress:
     enabled: true
     className: "nginx"
     annotations:
-      kubernetes.io/tls-acme: "true"
-    tls: true  # Enable TLS, uses global.panelUrl automatically
-  
-  # Panel service
-  service:
-    type: ClusterIP
-    port: 80
-  
+      # Modern cert-manager annotations
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      # Nginx ingress annotations
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    tls: true
+
+  # Resource limits for production
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+  # Storage configuration - using hostPath
+  persistence:
+    enabled: true
+    hostPath: "/var/lib/pterodactyl/panel"
+    size: 10Gi
+
+# Queue Worker configuration
+queueWorker:
+  enabled: true
+  replicaCount: 1
   resources:
     limits:
       cpu: 1000m
@@ -67,78 +93,36 @@ panel:
     requests:
       cpu: 250m
       memory: 512Mi
-  
-  # Storage for panel
-  persistence:
-    enabled: true
-    storageClass: ""
-    hostPath: ""  # If specified, uses hostPath instead of PVC
-    size: 5Gi
-    accessModes:
-      - ReadWriteOnce
 
-# Wings component (Game Server Daemon)
+# Wings configuration
 wings:
   enabled: true
-  image:
-    repository: ghcr.io/pterodactyl/wings
-    tag: latest
-    pullPolicy: IfNotPresent
   
-  # We need only 1 instance per node where you want to host game servers
-  replicaCount: 1
+  servers:
+    - name: wings-0
+      portRange:
+        start: 25565
+        end: 25585
   
-  # Wings needs to be privileged for Docker-in-Docker
-  # securityContext settings are handled in the template
+  # Wings API configuration
+  api:
+    port: 8080
   
-  # Wings environment configuration
-  env:
-    TZ: UTC
-    WINGS_DEBUG: false
-  
-  # Auto-configuration settings
-  autoConfig:
-    enabled: true
-    location:
-      short: "k8s"
-      long: "Kubernetes Cluster"
-    node:
-      memory: 8192
-      memoryOverallocate: 0
-      disk: 20480
-      diskOverallocate: 0
-      uploadSize: 100
-      maxPorts: 100
-      portRange: "25565-25585"
-  
-
-  
-
-  
-  # Wings service to expose API
+  # Wings service configuration
   service:
     type: ClusterIP
     port: 8080
   
-  # Wings persistence for docker storage and game servers
-  persistence:
-    docker:
-      enabled: true
-      storageClass: ""
-      hostPath: ""  # If specified, uses hostPath instead of PVC
-      size: 20Gi
-      accessModes:
-        - ReadWriteOnce
-    data:
-      enabled: true
-      storageClass: ""
-      hostPath: ""  # If specified, uses hostPath instead of PVC
-      size: 50Gi
-      accessModes:
-        - ReadWriteOnce
+  # Wings image configuration
+  image:
+    repository: "ghcr.io/pterodactyl/wings"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
   
-  # Node selectors to place wings on specific nodes
-  nodeSelector: {}
+  # Wings environment variables
+  env:
+    TZ: "UTC"
+    WINGS_DEBUG: false
   
   resources:
     limits:
@@ -148,24 +132,78 @@ wings:
       cpu: 500m
       memory: 1Gi
 
-# Database (MySQL/MariaDB)
+  # Proxy for intelligent port-based routing
+  proxy:
+    enabled: true
+    type: "nginx"
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  autoConfig:
+    enabled: true
+    location:
+      long: "Auto-generated Wings Location"
+    node:
+      memory: 16384  # 16GB
+      memoryOverallocate: 0
+      disk: 102400   # 100GB
+      diskOverallocate: 0
+      uploadSize: 1000  # 1GB
+
+  persistence:
+    docker:
+      enabled: true
+      hostPath: "/var/lib/pterodactyl/shared-docker"  # Shared Docker storage for all pods
+      size: 500Gi
+    data:
+      enabled: true
+      hostPath: "/var/lib/pterodactyl/wings/data"
+      size: 100Gi
+
+# Database configuration
 mysql:
   enabled: true
+  
+  # MySQL image configuration
   image:
-    repository: mariadb
-    tag: 10.5
-    pullPolicy: IfNotPresent
+    repository: "mysql"
+    tag: "8.0"
+    pullPolicy: "IfNotPresent"
   
+  # Use strong passwords in production
   rootPassword: "changeme"
-  
+
+  # Resource limits for production
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+  # Storage configuration - using hostPath
   persistence:
     enabled: true
-    storageClass: ""
-    hostPath: ""  # If specified, uses hostPath instead of PVC
-    size: 10Gi
-    accessModes:
-      - ReadWriteOnce
+    hostPath: "/var/lib/pterodactyl/mysql"
+    size: 20Gi
+
+# Redis configuration
+redis:
+  enabled: true
   
+  # Redis image configuration
+  image:
+    repository: "redis"
+    tag: "7-alpine"
+    pullPolicy: "IfNotPresent"
+  
+  # Resource limits for production
   resources:
     limits:
       cpu: 1000m
@@ -174,49 +212,24 @@ mysql:
       cpu: 250m
       memory: 512Mi
 
-# Redis for caching/queue
-redis:
-  enabled: true
-  image:
-    repository: redis
-    tag: 6
-    pullPolicy: IfNotPresent
-  
+  # Storage configuration - using hostPath
   persistence:
     enabled: true
-    storageClass: ""
-    hostPath: ""  # If specified, uses hostPath instead of PVC
-    size: 1Gi
-    accessModes:
-      - ReadWriteOnce
-  
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
+    hostPath: "/var/lib/pterodactyl/redis"
+    size: 5Gi
 
-# Queue worker for background tasks
-queueWorker:
-  enabled: true
-  replicaCount: 1
-  
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 256Mi
-
-# Game server port exposure
+# Game server configuration
 gameServers:
-  # Service to expose game server ports
   service:
+    enabled: true
     type: LoadBalancer
-    # Range of ports to expose for game servers
-    portRange:
-      start: 25565
-      end: 25585
+    # Port range automatically calculated from wings.servers configuration
+    
+    # Static IP configuration for port forwarding setup
+    # Set to specific IP for consistent router port forwarding
+    # Leave empty/null to let MetalLB assign automatically
+    loadBalancerIP: ""
+    
+    # MetalLB configuration
+    annotations:
+      metallb.universe.tf/address-pool: "gameserver-pool" 
