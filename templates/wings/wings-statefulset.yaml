@@ -70,7 +70,7 @@ spec:
             - name: NODE_NAME
               value: "{{ include "pterodactyl.wings.name" . }}"
             - name: WINGS_FQDN
-              value: "{{ include "pterodactyl.wings.name" . }}.{{ .Values.namespace | default "pterodactyl" }}.svc.cluster.local"
+              value: ""  # Will be set dynamically in the init script
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -94,6 +94,10 @@ spec:
               # Extract instance index from pod name (e.g. pterodactyl-wings-0 -> 0)
               INSTANCE_INDEX=$(echo "$POD_NAME" | sed 's/.*-//')
               echo "Wings instance index: $INSTANCE_INDEX"
+              
+              # Set unique FQDN for this Wings instance
+              WINGS_FQDN="wings-${INSTANCE_INDEX}.{{ .Values.global.wingsDomain | default .Values.global.panelUrl }}"
+              echo "Wings FQDN: $WINGS_FQDN"
               
               # Generate cool 3-word random names with instance suffix
               ADJECTIVES="happy brave calm swift bold clever quiet wild bright gentle fierce proud noble wise strong agile nimble steady mighty powerful graceful elegant sleek smooth polished refined crisp sharp focused alert keen vigilant watchful silent stealthy swift rapid quick lightning blazing burning glowing radiant luminous brilliant dazzling sparkling shimmering gleaming majestic royal regal imperial cosmic stellar lunar solar arctic alpine mountain ocean desert storm thunder lightning frost crystal diamond emerald sapphire"
@@ -132,10 +136,10 @@ spec:
                 --locationId="${LOCATION_ID}" \
                 --fqdn="${WINGS_FQDN}" \
                 --public=1 \
-                --scheme=http \
+                --scheme=https \
                 --proxy=1 \
                 --maintenance=0 \
-                --daemonListeningPort=8080 \
+                --daemonListeningPort=443 \
                 --daemonSFTPPort=2022 \
                 --maxMemory={{ .Values.wings.autoConfig.node.memory }} \
                 --overallocateMemory={{ .Values.wings.autoConfig.node.memoryOverallocate }} \
@@ -269,7 +273,7 @@ spec:
 
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: 443
               protocol: TCP
             - name: sftp
               containerPort: 2022
@@ -283,12 +287,12 @@ spec:
               mountPath: /tmp
           livenessProbe:
             tcpSocket:
-              port: 8080
+              port: 443
             initialDelaySeconds: 30
             periodSeconds: 30
           readinessProbe:
             tcpSocket:
-              port: 8080
+              port: 443
             initialDelaySeconds: 30
             periodSeconds: 15
           resources:

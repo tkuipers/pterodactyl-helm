@@ -1,0 +1,47 @@
+{{- if and .Values.wings.enabled .Values.wings.ingress.enabled -}}
+{{- range $index, $server := .Values.wings.servers }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "pterodactyl.wings.name" $ }}-{{ $index }}
+  namespace: {{ $.Values.namespace | default "pterodactyl" }}
+  labels:
+    {{- include "pterodactyl.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: wings
+    app.kubernetes.io/instance-id: "{{ $index }}"
+  annotations:
+    # Certificate management
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Nginx ingress annotations
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # WebSocket support for Wings API and real-time features
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "{{ include "pterodactyl.wings.name" $ }}-{{ $index }}"
+    # CORS headers to allow Panel domain to access Wings API
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://{{ $.Values.global.panelUrl }}"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, X-Requested-With"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - "wings-{{ $index }}.{{ $.Values.global.wingsDomain | default $.Values.global.panelUrl }}"
+      secretName: "wings-{{ $index }}-{{ $.Values.global.wingsDomain | default $.Values.global.panelUrl | replace "." "-" }}-tls"
+  rules:
+    - host: "wings-{{ $index }}.{{ $.Values.global.wingsDomain | default $.Values.global.panelUrl }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "pterodactyl.wings.name" $ }}-{{ $index }}
+                port:
+                  number: 443
+{{- end }}
+{{- end }} 

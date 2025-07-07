@@ -16,30 +16,40 @@ spec:
   ports:
     - name: http
       protocol: TCP
-      port: 8080
+      port: 443
       targetPort: http
     - name: sftp
       protocol: TCP
       port: 2022
       targetPort: sftp
 ---
-# Regular service for external access
+# Individual services for each Wings instance using pod name selector
+{{- range $index, $server := .Values.wings.servers }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "pterodactyl.wings.name" . }}
-  namespace: {{ .Values.namespace | default "pterodactyl" }}
+  name: {{ include "pterodactyl.wings.name" $ }}-{{ $index }}
+  namespace: {{ $.Values.namespace | default "pterodactyl" }}
   labels:
-    {{- include "pterodactyl.labels" . | nindent 4 }}
+    {{- include "pterodactyl.labels" $ | nindent 4 }}
     app.kubernetes.io/component: wings
+    app.kubernetes.io/instance-id: "{{ $index }}"
 spec:
-  type: {{ .Values.wings.service.type }}
+  type: ClusterIP
   selector:
-    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
+    {{- include "pterodactyl.wings.selectorLabels" $ | nindent 4 }}
     app.kubernetes.io/component: wings
+    # This targets the specific pod by name
+    statefulset.kubernetes.io/pod-name: {{ include "pterodactyl.wings.name" $ }}-{{ $index }}
   ports:
     - name: http
       protocol: TCP
-      port: {{ .Values.wings.service.port }}
+      port: 443
       targetPort: http
+    - name: sftp
+      protocol: TCP
+      port: 2022
+      targetPort: sftp
+---
+{{- end }}
 {{- end }} 
