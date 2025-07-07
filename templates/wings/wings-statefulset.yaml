@@ -175,6 +175,34 @@ spec:
                 sleep 5
               done
               echo "Docker daemon ready for pod $ORDINAL!"
+        # Set up shared storage permissions
+        - name: setup-shared-storage
+          image: busybox:1.36
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "Setting up shared storage permissions..."
+              # Create pterodactyl directories with correct ownership
+              mkdir -p /tmp/pterodactyl
+              mkdir -p /var/lib/pterodactyl
+              
+              # Set ownership to pterodactyl user (988:988) and proper permissions
+              # Make /tmp/pterodactyl accessible to both pterodactyl user and root
+              chown -R 988:988 /tmp/pterodactyl /var/lib/pterodactyl
+              chmod -R 777 /tmp/pterodactyl  # Full access for both users
+              chmod -R 755 /var/lib/pterodactyl
+              
+              echo "Shared storage permissions configured"
+              echo "tmp contents:" && ls -la /tmp/
+              echo "pterodactyl contents:" && ls -la /var/lib/pterodactyl/
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: shared-tmp
+              mountPath: /tmp
+            - name: wings-data
+              mountPath: /var/lib/pterodactyl
       {{- end }}
       volumes:
         - name: wings-data
@@ -192,6 +220,10 @@ spec:
           {{- end }}
         - name: wings-config
           emptyDir: {}
+        - name: shared-tmp
+          hostPath:
+            path: /tmp/pterodactyl
+            type: DirectoryOrCreate
       containers:
         # Docker proxy sidecar - forwards localhost:2375 to the correct Docker daemon
         - name: docker-proxy
@@ -247,18 +279,30 @@ spec:
               mountPath: /var/lib/pterodactyl
             - name: wings-config
               mountPath: /etc/pterodactyl
+            - name: shared-tmp
+              mountPath: /tmp
           livenessProbe:
             tcpSocket:
               port: 8080
-            initialDelaySeconds: 180
+            initialDelaySeconds: 30
             periodSeconds: 30
           readinessProbe:
             tcpSocket:
               port: 8080
-            initialDelaySeconds: 120
+            initialDelaySeconds: 30
             periodSeconds: 15
           resources:
             {{- toYaml .Values.wings.resources | nindent 12 }}
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "pterodactyl.wings.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: docker-daemon
+                topologyKey: kubernetes.io/hostname
       {{- with .Values.wings.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

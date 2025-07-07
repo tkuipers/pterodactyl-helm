@@ -1,0 +1,22 @@
+{{- if .Values.wings.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pterodactyl.wings.name" . }}-docker-isolation
+  namespace: {{ .Values.namespace | default "pterodactyl" }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: wings-docker
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    # Only allow traffic from Wings pods in the same namespace
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: wings
+    ports:
+    - protocol: TCP
+      port: 2375
+{{- end }} 

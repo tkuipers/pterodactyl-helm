@@ -48,8 +48,10 @@ spec:
           volumeMounts:
             - name: docker-storage
               mountPath: /var/lib/docker
-            - name: dind-storage
+            - name: shared-tmp
               mountPath: /tmp
+            - name: wings-data
+              mountPath: /var/lib/pterodactyl
           resources:
             limits:
               cpu: 4000m      # 4 CPU cores
@@ -83,8 +85,34 @@ spec:
           emptyDir:
             sizeLimit: 50Gi
           {{- end }}
-        - name: dind-storage
+        - name: shared-tmp
+          hostPath:
+            path: /tmp/pterodactyl
+            type: DirectoryOrCreate
+        # Mount the same wings data volume so Docker can access game server directories
+        - name: wings-data
+          {{- if .Values.wings.persistence.data.enabled }}
+          {{- if .Values.wings.persistence.data.hostPath }}
+          hostPath:
+            path: {{ .Values.wings.persistence.data.hostPath }}
+            type: DirectoryOrCreate
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "pterodactyl.wings.name" . }}-data
+          {{- end }}
+          {{- else }}
           emptyDir: {}
+          {{- end }}
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "pterodactyl.wings.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: wings
+                topologyKey: kubernetes.io/hostname
       {{- with .Values.wings.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
