@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: docker-daemon
 spec:
   serviceName: {{ include "pterodactyl.wings.name" . }}-docker-headless
-  replicas: {{ .Values.wings.replicaCount }}
+  replicas: {{ len .Values.wings.servers }}
   selector:
     matchLabels:
       {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}

@@ -66,6 +66,18 @@ spec:
               value: {{ .Values.panel.env.SESSION_DRIVER }}
             - name: QUEUE_CONNECTION
               value: {{ .Values.panel.env.QUEUE_CONNECTION }}
+            {{- if .Values.panel.env.MAIL_DRIVER }}
+            - name: MAIL_DRIVER
+              value: {{ .Values.panel.env.MAIL_DRIVER }}
+            {{- end }}
+            {{- if .Values.panel.env.MAIL_FROM }}
+            - name: MAIL_FROM
+              value: {{ .Values.panel.env.MAIL_FROM }}
+            {{- end }}
+            {{- if .Values.panel.env.MAIL_FROM_NAME }}
+            - name: MAIL_FROM_NAME
+              value: {{ .Values.panel.env.MAIL_FROM_NAME }}
+            {{- end }}
             - name: DB_HOST
               value: {{ .Values.panel.database.host }}
             - name: DB_PORT

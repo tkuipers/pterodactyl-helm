@@ -1,4 +1,5 @@
 {{- if .Values.wings.enabled -}}
+{{- if .Values.gameServers.service.enabled -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,20 +8,31 @@ metadata:
   labels:
     {{- include "pterodactyl.labels" . | nindent 4 }}
     app.kubernetes.io/component: wings-gameservers
+  {{- with .Values.gameServers.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.gameServers.service.type }}
-  # We need to expose a range of ports for game servers
+  {{- if .Values.gameServers.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.gameServers.service.loadBalancerIP }}
+  {{- end }}
+  # Auto-calculate ports from all Wings servers
   ports:
-    {{- range seq (.Values.gameServers.service.portRange.start | int) (.Values.gameServers.service.portRange.end | int) | split " " }}
+    {{- range .Values.wings.servers }}
+    {{- range seq (.portRange.start | int) (.portRange.end | int) | split " " }}
     - port: {{ . }}
       targetPort: {{ . }}
       protocol: TCP
-      name: gs-{{ . }}
+      name: gs-tcp-{{ . }}
     - port: {{ . }}
       targetPort: {{ . }}
       protocol: UDP
       name: gs-udp-{{ . }}
     {{- end }}
+    {{- end }}
   selector:
-    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wings-proxy
+{{- end }}
 {{- end }} 
