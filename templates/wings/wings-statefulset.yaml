@@ -303,7 +303,6 @@ spec:
                 labelSelector:
                   matchLabels:
                     {{- include "pterodactyl.wings.selectorLabels" . | nindent 20 }}
-                    app.kubernetes.io/component: docker-daemon
                 topologyKey: kubernetes.io/hostname
       {{- with .Values.wings.nodeSelector }}
       nodeSelector:
