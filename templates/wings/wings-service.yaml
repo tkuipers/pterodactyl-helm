@@ -12,7 +12,6 @@ spec:
   clusterIP: None  # Headless service for StatefulSet
   selector:
     {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: wings
   ports:
     - name: http
       protocol: TCP
@@ -38,7 +37,6 @@ spec:
   type: ClusterIP
   selector:
     {{- include "pterodactyl.wings.selectorLabels" $ | nindent 4 }}
-    app.kubernetes.io/component: wings
     # This targets the specific pod by name
     statefulset.kubernetes.io/pod-name: {{ include "pterodactyl.wings.name" $ }}-{{ $index }}
   ports:

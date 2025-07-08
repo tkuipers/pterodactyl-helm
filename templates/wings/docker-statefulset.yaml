@@ -12,12 +12,12 @@ spec:
   replicas: {{ len .Values.wings.servers }}
   selector:
     matchLabels:
-      {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}
+      {{- include "pterodactyl.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: docker-daemon
   template:
     metadata:
       labels:
-        {{- include "pterodactyl.wings.selectorLabels" . | nindent 8 }}
+        {{- include "pterodactyl.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: docker-daemon
     spec:
       containers:
@@ -111,7 +111,6 @@ spec:
                 labelSelector:
                   matchLabels:
                     {{- include "pterodactyl.wings.selectorLabels" . | nindent 20 }}
-                    app.kubernetes.io/component: wings
                 topologyKey: kubernetes.io/hostname
       {{- with .Values.wings.nodeSelector }}
       nodeSelector:

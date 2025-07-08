@@ -13,12 +13,10 @@ spec:
   selector:
     matchLabels:
       {{- include "pterodactyl.wings.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: wings
   template:
     metadata:
       labels:
         {{- include "pterodactyl.wings.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: wings
     spec:
       securityContext:
         fsGroup: 0

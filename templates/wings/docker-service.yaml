@@ -10,7 +10,7 @@ metadata:
 spec:
   clusterIP: None  # Headless service for direct pod access
   selector:
-    {{- include "pterodactyl.wings.selectorLabels" . | nindent 4 }}
+    {{- include "pterodactyl.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: docker-daemon
   ports:
     - name: docker-api
