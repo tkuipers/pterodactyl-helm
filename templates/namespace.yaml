@@ -6,4 +6,9 @@ metadata:
     pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/audit: privileged
     pod-security.kubernetes.io/warn: privileged
-    {{- include "pterodactyl.labels" . | nindent 4 }} 
+    {{- include "pterodactyl.labels" . | nindent 4 }}
+  annotations:
+    # Ensure namespace is created before any other resources
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation 
